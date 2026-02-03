@@ -1,5 +1,5 @@
 [project]
-name = "shotgrid-lite"
+name = "opengrid-lite"
 version = "0.1.0"
 description = "Lightweight production tracking for VFX/Animation pipelines"
 authors = [
@@ -28,22 +28,22 @@ dev = [
     "ruff>=0.1",
 ]
 all = [
-    "shotgrid-lite[cli,server,dev]",
+    "opengrid-lite[cli,server,dev]",
 ]
 
 [project.scripts]
-sgl = "shotgrid_lite.cli:app"
+sgl = "opengrid_lite.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/voidreamer/shotgrid-lite"
-Repository = "https://github.com/voidreamer/shotgrid-lite"
+Homepage = "https://github.com/voidreamer/opengrid-lite"
+Repository = "https://github.com/voidreamer/opengrid-lite"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["python/src/shotgrid_lite"]
+packages = ["python/src/opengrid_lite"]
 
 [tool.ruff]
 target-version = "py310"

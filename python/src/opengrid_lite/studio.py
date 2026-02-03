@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from shotgrid_lite.models import Project, Asset, Shot, Task, Version
+from opengrid_lite.models import Project, Asset, Shot, Task, Version
 
 
 class Studio:

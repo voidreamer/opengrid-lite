@@ -1,8 +1,8 @@
-# ShotGrid Lite
+# OpenGrid Lite
 
-A lightweight Python SDK and CLI for production tracking. Works standalone or as a simpler alternative to ShotGrid/Flow.
+A lightweight Python SDK and CLI for production tracking. Works standalone or as a simpler alternative to OpenGrid/Flow.
 
-[![Python CI](https://github.com/voidreamer/shotgrid-lite/actions/workflows/python-ci.yml/badge.svg)](https://github.com/voidreamer/shotgrid-lite/actions/workflows/python-ci.yml)
+[![Python CI](https://github.com/voidreamer/opengrid-lite/actions/workflows/python-ci.yml/badge.svg)](https://github.com/voidreamer/opengrid-lite/actions/workflows/python-ci.yml)
 
 ## Features
 
@@ -10,12 +10,12 @@ A lightweight Python SDK and CLI for production tracking. Works standalone or as
 - **SQLite backend** — No server required, just a file
 - **Optional server** — REST API for team access
 - **CLI** — Command-line interface for scripting
-- **ShotGrid compatible** — Similar data model for easy migration
+- **OpenGrid compatible** — Similar data model for easy migration
 
 ## Installation
 
 ```bash
-pip install shotgrid-lite
+pip install opengrid-lite
 ```
 
 ## Quick Start
@@ -23,7 +23,7 @@ pip install shotgrid-lite
 ### Python API
 
 ```python
-from shotgrid_lite import Studio
+from opengrid_lite import Studio
 
 # Create/open a studio database
 studio = Studio("my_studio.db")
@@ -178,7 +178,7 @@ PATCH  /api/tasks/{id}
 ## Configuration
 
 ```yaml
-# ~/.shotgrid-lite.yaml
+# ~/.opengrid-lite.yaml
 database: ~/studio.db
 
 # Optional server settings
@@ -193,16 +193,16 @@ hooks:
     - update_dashboard
 ```
 
-## Migration from ShotGrid
+## Migration from OpenGrid
 
 ```python
-from shotgrid_lite import Studio
-from shotgrid_lite.migrate import from_shotgrid
+from opengrid_lite import Studio
+from opengrid_lite.migrate import from_shotgrid
 
-# Connect to ShotGrid
+# Connect to OpenGrid
 sg = shotgun_api3.Shotgun(url, script_name, api_key)
 
-# Migrate to ShotGrid Lite
+# Migrate to OpenGrid Lite
 studio = Studio("migrated.db")
 from_shotgrid(sg, studio, project_codes=["MYFILM"])
 ```
@@ -210,8 +210,8 @@ from_shotgrid(sg, studio, project_codes=["MYFILM"])
 ## Development
 
 ```bash
-git clone https://github.com/voidreamer/shotgrid-lite.git
-cd shotgrid-lite
+git clone https://github.com/voidreamer/opengrid-lite.git
+cd opengrid-lite
 uv sync --dev
 uv run pytest
 ```
