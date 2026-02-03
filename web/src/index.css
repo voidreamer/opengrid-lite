@@ -1,0 +1,43 @@
+/* Import Rosewood UI from CDN (or local) */
+@import url('https://unpkg.com/@rosewood-ui/css@latest/dist/rosewood.min.css');
+
+/* OpenGrid specific overrides */
+:root {
+  /* Keep Rosewood defaults, but can override here */
+}
+
+/* Full height app */
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Sidebar adjustments for dashboard */
+.rw-layout-sidebar {
+  background: var(--rw-bg);
+}
+
+.rw-sidebar {
+  background: var(--rw-surface);
+}
+
+/* Grid layout for 3-column view */
+@media (max-width: 1200px) {
+  .rw-grid--3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .rw-grid--3 {
+    grid-template-columns: 1fr;
+  }
+  
+  .rw-layout-sidebar__content {
+    margin-left: 0;
+  }
+  
+  .rw-sidebar {
+    display: none;
+  }
+}

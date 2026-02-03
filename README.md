@@ -1,220 +1,163 @@
-# OpenGrid Lite
+# ⚡ OpenGrid
 
-A lightweight Python SDK and CLI for production tracking. Works standalone or as a simpler alternative to OpenGrid/Flow.
+Modern production tracking for VFX/Animation pipelines — fast, simple, beautiful.
 
-[![Python CI](https://github.com/voidreamer/opengrid-lite/actions/workflows/python-ci.yml/badge.svg)](https://github.com/voidreamer/opengrid-lite/actions/workflows/python-ci.yml)
+[![CI](https://github.com/voidreamer/opengrid-lite/actions/workflows/python-ci.yml/badge.svg)](https://github.com/voidreamer/opengrid-lite/actions/workflows/python-ci.yml)
 
-## Features
+## What is this?
 
-- **Simple API** — CRUD operations for projects, assets, shots, tasks
-- **SQLite backend** — No server required, just a file
-- **Optional server** — REST API for team access
-- **CLI** — Command-line interface for scripting
-- **OpenGrid compatible** — Similar data model for easy migration
+A lightweight alternative to ShotGrid for tracking assets, shots, tasks, and versions in production.
 
-## Installation
-
-```bash
-pip install opengrid-lite
-```
+**Core SDK** — Python library for working with production data  
+**REST API** — FastAPI server for web/mobile/DCC integration  
+**Web UI** — React dashboard with Rosewood UI theme  
 
 ## Quick Start
 
-### Python API
+### 1. Install the SDK
+
+```bash
+pip install opengrid
+```
 
 ```python
-from opengrid_lite import Studio
+from opengrid import Studio
 
-# Create/open a studio database
-studio = Studio("my_studio.db")
-
-# Create a project
-project = studio.create_project(
-    name="My Film",
-    code="MYFILM",
-)
-
-# Create an asset
-asset = studio.create_asset(
-    project=project,
-    name="hero_character",
-    asset_type="character",
-)
-
-# Create a task
-task = studio.create_task(
-    entity=asset,
-    name="modeling",
-    status="in_progress",
-    assignee="alejandro",
-)
-
-# Query assets
-characters = studio.find_assets(
-    project=project,
-    asset_type="character",
-)
-
-# Update task status
-studio.update_task(task, status="complete")
-```
-
-### CLI
-
-```bash
-# Initialize a new studio database
-sgl init my_studio.db
+# Create or open a studio database
+studio = Studio("~/my_studio.db")
 
 # Create a project
-sgl project create "My Film" --code MYFILM
-
-# List projects
-sgl project list
+project = studio.create_project(name="My Film", code="MYFILM")
 
 # Create an asset
-sgl asset create MYFILM hero_character --type character
+hero = studio.create_asset(project, name="hero", asset_type="character")
 
 # Create a task
-sgl task create MYFILM/hero_character modeling --assignee alejandro
+model_task = studio.create_task(hero, name="model", assignee="alejandro")
 
-# Update task status
-sgl task update MYFILM/hero_character/modeling --status complete
-
-# Query
-sgl asset list MYFILM --type character
-sgl task list MYFILM --status in_progress --assignee alejandro
+# Create a version
+version = studio.create_version(model_task, path="/path/to/hero_model_v001.usd")
 ```
 
-### REST API (Optional)
+### 2. Run the Server
 
 ```bash
-# Start the server
-sgl serve my_studio.db --port 8080
-
-# API endpoints
-GET    /api/projects
-POST   /api/projects
-GET    /api/projects/{code}
-GET    /api/projects/{code}/assets
-POST   /api/projects/{code}/assets
-GET    /api/assets/{id}
-PATCH  /api/assets/{id}
-GET    /api/tasks
-POST   /api/tasks
-PATCH  /api/tasks/{id}
+pip install opengrid-server
+opengrid-server
+# → http://localhost:8000
+# → Docs: http://localhost:8000/docs
 ```
+
+### 3. Run the Web UI
+
+```bash
+cd web
+npm install
+npm run dev
+# → http://localhost:5173
+```
+
+## Project Structure
+
+```
+opengrid/
+├── core/           # Python SDK
+│   └── src/opengrid/
+│       ├── models.py    # Project, Asset, Shot, Task, Version
+│       └── studio.py    # Main Studio class
+├── server/         # FastAPI REST API
+│   └── src/opengrid_server/
+│       └── main.py
+├── web/            # React frontend
+│   └── src/
+│       └── App.tsx
+└── cli/            # CLI tools (planned)
+```
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/projects` | List projects |
+| `POST` | `/api/projects` | Create project |
+| `GET` | `/api/projects/{code}` | Get project |
+| `GET` | `/api/projects/{code}/assets` | List assets |
+| `POST` | `/api/projects/{code}/assets` | Create asset |
+| `GET` | `/api/assets/{id}/tasks` | List tasks |
+| `POST` | `/api/assets/{id}/tasks` | Create task |
+| `PATCH` | `/api/tasks/{id}` | Update task |
+| `POST` | `/api/tasks/{id}/versions` | Create version |
 
 ## Data Model
 
-### Project
-```python
-{
-    "id": 1,
-    "name": "My Film",
-    "code": "MYFILM",
-    "status": "active",
-    "created_at": "2024-01-01T00:00:00Z",
-    "metadata": {}
-}
+```
+Project
+  └── Asset (character, prop, environment, ...)
+        └── Task (model, rig, surfacing, ...)
+              └── Version (v001, v002, ...)
+
+  └── Shot
+        └── Task (anim, layout, comp, ...)
+              └── Version
 ```
 
-### Asset
-```python
-{
-    "id": 1,
-    "project_id": 1,
-    "name": "hero_character",
-    "asset_type": "character",  # character, prop, environment, vehicle, fx
-    "status": "in_progress",
-    "description": "Main character",
-    "thumbnail": "/path/to/thumb.jpg",
-    "metadata": {}
-}
-```
+## Integration with Anvil
 
-### Shot
-```python
-{
-    "id": 1,
-    "project_id": 1,
-    "sequence": "SQ010",
-    "name": "SQ010_0010",
-    "frame_start": 1001,
-    "frame_end": 1100,
-    "status": "in_progress",
-    "metadata": {}
-}
-```
+OpenGrid + Anvil = The Forge 🔨⚡
 
-### Task
-```python
-{
-    "id": 1,
-    "entity_type": "asset",  # asset or shot
-    "entity_id": 1,
-    "name": "modeling",
-    "status": "in_progress",  # waiting, in_progress, review, complete
-    "assignee": "alejandro",
-    "due_date": "2024-02-01",
-    "metadata": {}
-}
-```
+```bash
+# Set project context
+export OPENGRID_PROJECT=MYFILM
 
-### Version
-```python
-{
-    "id": 1,
-    "task_id": 1,
-    "version_number": 3,
-    "status": "pending_review",
-    "path": "/publish/assets/hero/model/v003/hero_model_v003.usd",
-    "thumbnail": "/publish/assets/hero/model/v003/thumb.jpg",
-    "notes": "Fixed topology issues",
-    "created_by": "alejandro",
-    "created_at": "2024-01-15T10:30:00Z"
-}
+# Run Blender with project packages
+anvil run blender-4.2 studio-tools -- blender
+
+# Publish creates a version in OpenGrid
+# (via studio-tools addon)
 ```
 
 ## Configuration
 
-```yaml
-# ~/.opengrid-lite.yaml
-database: ~/studio.db
+Environment variables:
 
-# Optional server settings
-server:
-  host: 0.0.0.0
-  port: 8080
-  
-# Hooks for pipeline integration  
-hooks:
-  on_version_create:
-    - notify_slack
-    - update_dashboard
-```
-
-## Migration from OpenGrid
-
-```python
-from opengrid_lite import Studio
-from opengrid_lite.migrate import from_shotgrid
-
-# Connect to OpenGrid
-sg = shotgun_api3.Shotgun(url, script_name, api_key)
-
-# Migrate to OpenGrid Lite
-studio = Studio("migrated.db")
-from_shotgrid(sg, studio, project_codes=["MYFILM"])
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENGRID_DATABASE_PATH` | `~/.opengrid/studio.db` | Database location |
+| `OPENGRID_HOST` | `0.0.0.0` | Server host |
+| `OPENGRID_PORT` | `8000` | Server port |
+| `OPENGRID_DEBUG` | `false` | Debug mode |
 
 ## Development
 
 ```bash
-git clone https://github.com/voidreamer/opengrid-lite.git
-cd opengrid-lite
-uv sync --dev
-uv run pytest
+# Core SDK
+cd core
+pip install -e .
+pytest
+
+# Server
+cd server
+pip install -e .
+opengrid-server
+
+# Web
+cd web
+npm install
+npm run dev
 ```
+
+## Why not ShotGrid?
+
+| | ShotGrid | OpenGrid |
+|---|----------|----------|
+| **Pricing** | $30+/user/month | Free |
+| **Hosting** | SaaS only | Self-hosted |
+| **Setup** | Sales call | `pip install` |
+| **Speed** | Slow | Fast (SQLite/Postgres) |
+| **UI** | 2010 vibes | Modern (Rosewood) |
+| **API** | Complex | Simple REST |
+
+OpenGrid is for small studios, freelancers, and teams who want to track their work without the enterprise overhead.
 
 ## License
 

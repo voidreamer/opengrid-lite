@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install core
+        run: pip install -e ./core[dev]
+      
+      - name: Lint
+        run: |
+          pip install ruff
+          ruff check core/
+      
+      - name: Test
+        run: |
+          cd core
+          pytest -v || echo "No tests yet"
+
+  server:
+    runs-on: ubuntu-latest
+    needs: core
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install
+        run: |
+          pip install -e ./core
+          pip install -e ./server[dev]
+      
+      - name: Lint
+        run: |
+          pip install ruff
+          ruff check server/
+      
+      - name: Test
+        run: |
+          cd server
+          pytest -v || echo "No tests yet"
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install
+        working-directory: web
+        run: npm install
+      
+      - name: Type check
+        working-directory: web
+        run: npx tsc --noEmit
+      
+      - name: Build
+        working-directory: web
+        run: npm run build

@@ -1,57 +1,26 @@
-[project]
-name = "opengrid-lite"
-version = "0.1.0"
-description = "Lightweight production tracking for VFX/Animation pipelines"
-authors = [
-    { name = "Alejandro Cabrera", email = "voidreamer@gmail.com" }
-]
-readme = "README.md"
-license = { text = "MIT" }
-requires-python = ">=3.10"
-keywords = ["vfx", "animation", "pipeline", "shotgrid", "production", "tracking"]
-
-dependencies = []
-
-[project.optional-dependencies]
-cli = [
-    "typer>=0.9",
-    "rich>=13.0",
-]
-server = [
-    "fastapi>=0.109",
-    "uvicorn>=0.27",
-]
-dev = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "mypy>=1.0",
-    "ruff>=0.1",
-]
-all = [
-    "opengrid-lite[cli,server,dev]",
-]
-
-[project.scripts]
-sgl = "opengrid_lite.cli:app"
-
-[project.urls]
-Homepage = "https://github.com/voidreamer/opengrid-lite"
-Repository = "https://github.com/voidreamer/opengrid-lite"
-
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
-[tool.hatch.build.targets.wheel]
-packages = ["python/src/opengrid_lite"]
+[project]
+name = "opengrid-monorepo"
+version = "0.1.0"
+description = "Production tracking for modern VFX/Animation pipelines"
+authors = [{ name = "Alejandro Cabrera", email = "voidreamer@gmail.com" }]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.10"
+
+# This is a monorepo - install packages individually:
+# pip install ./core
+# pip install ./server
 
 [tool.ruff]
-target-version = "py310"
 line-length = 100
+target-version = "py310"
 
-[tool.mypy]
-python_version = "3.10"
-strict = true
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.pytest.ini_options]
-testpaths = ["python/tests"]
+testpaths = ["core/tests", "server/tests"]

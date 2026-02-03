@@ -14,7 +14,7 @@ except ImportError:
     HAS_CLI = False
 
 if HAS_CLI:
-    from opengrid_lite import Studio
+    from opengrid import Studio
 
     app = typer.Typer(
         name="sgl",

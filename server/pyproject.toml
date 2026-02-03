@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opengrid-server"
+version = "0.1.0"
+description = "OpenGrid REST API server"
+authors = [{ name = "Alejandro Cabrera", email = "voidreamer@gmail.com" }]
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "opengrid",
+    "fastapi>=0.109",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "httpx>=0.26"]
+
+[project.scripts]
+opengrid-server = "opengrid_server.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
