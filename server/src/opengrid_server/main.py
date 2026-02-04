@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -19,7 +18,7 @@ from opengrid import Studio, Project, Asset, Shot, Task, Version
 class Settings(BaseSettings):
     """Server configuration."""
     
-    database_path: str = "~/.opengrid/studio.db"
+    database_url: str = "postgresql://localhost/opengrid"
     host: str = "0.0.0.0"
     port: int = 8000
     debug: bool = False
@@ -39,9 +38,7 @@ def get_studio() -> Studio:
     """Get the studio instance."""
     global _studio
     if _studio is None:
-        db_path = Path(settings.database_path).expanduser()
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        _studio = Studio(db_path)
+        _studio = Studio(settings.database_url)
     return _studio
 
 

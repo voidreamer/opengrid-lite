@@ -1,12 +1,13 @@
-"""Studio database interface."""
+"""Studio database interface — PostgreSQL backend."""
 
 from __future__ import annotations
 
 import json
-import sqlite3
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Optional, Union
+
+import psycopg
+from psycopg.rows import dict_row
 
 from opengrid.models import Project, Asset, Shot, Task, Version
 
@@ -15,102 +16,99 @@ class Studio:
     """Main interface for production tracking.
     
     Example:
-        studio = Studio("my_studio.db")
+        studio = Studio("postgresql://localhost/opengrid")
         project = studio.create_project(name="My Film", code="MYFILM")
         asset = studio.create_asset(project, name="hero", asset_type="character")
     """
     
-    def __init__(self, db_path: Union[str, Path] = ":memory:") -> None:
+    def __init__(self, conninfo: str = "postgresql://localhost/opengrid") -> None:
         """Initialize studio database.
         
         Args:
-            db_path: Path to SQLite database, or ":memory:" for in-memory
+            conninfo: PostgreSQL connection string
         """
-        self.db_path = Path(db_path) if db_path != ":memory:" else db_path
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self.conninfo = conninfo
+        self._conn = psycopg.connect(conninfo, row_factory=dict_row, autocommit=False)
         self._init_schema()
     
     def _init_schema(self) -> None:
         """Create database tables if they don't exist."""
-        cursor = self._conn.cursor()
-        
-        cursor.executescript("""
-            CREATE TABLE IF NOT EXISTS projects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                code TEXT UNIQUE NOT NULL,
-                status TEXT DEFAULT 'active',
-                description TEXT,
-                created_at TEXT,
-                metadata TEXT DEFAULT '{}'
-            );
-            
-            CREATE TABLE IF NOT EXISTS assets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                asset_type TEXT NOT NULL,
-                status TEXT DEFAULT 'waiting',
-                description TEXT,
-                thumbnail TEXT,
-                created_at TEXT,
-                metadata TEXT DEFAULT '{}',
-                FOREIGN KEY (project_id) REFERENCES projects(id),
-                UNIQUE (project_id, name)
-            );
-            
-            CREATE TABLE IF NOT EXISTS shots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL,
-                sequence TEXT NOT NULL,
-                name TEXT NOT NULL,
-                frame_start INTEGER DEFAULT 1001,
-                frame_end INTEGER DEFAULT 1100,
-                status TEXT DEFAULT 'waiting',
-                description TEXT,
-                thumbnail TEXT,
-                created_at TEXT,
-                metadata TEXT DEFAULT '{}',
-                FOREIGN KEY (project_id) REFERENCES projects(id),
-                UNIQUE (project_id, name)
-            );
-            
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                entity_type TEXT NOT NULL,
-                entity_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                status TEXT DEFAULT 'waiting',
-                assignee TEXT,
-                due_date TEXT,
-                priority INTEGER DEFAULT 50,
-                created_at TEXT,
-                metadata TEXT DEFAULT '{}',
-                UNIQUE (entity_type, entity_id, name)
-            );
-            
-            CREATE TABLE IF NOT EXISTS versions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER NOT NULL,
-                version_number INTEGER NOT NULL,
-                status TEXT DEFAULT 'pending_review',
-                path TEXT,
-                thumbnail TEXT,
-                notes TEXT,
-                created_by TEXT,
-                created_at TEXT,
-                metadata TEXT DEFAULT '{}',
-                FOREIGN KEY (task_id) REFERENCES tasks(id),
-                UNIQUE (task_id, version_number)
-            );
-            
-            CREATE INDEX IF NOT EXISTS idx_assets_project ON assets(project_id);
-            CREATE INDEX IF NOT EXISTS idx_shots_project ON shots(project_id);
-            CREATE INDEX IF NOT EXISTS idx_tasks_entity ON tasks(entity_type, entity_id);
-            CREATE INDEX IF NOT EXISTS idx_versions_task ON versions(task_id);
-        """)
-        
+        with self._conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    code TEXT UNIQUE NOT NULL,
+                    status TEXT DEFAULT 'active',
+                    description TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    metadata JSONB DEFAULT '{}'
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS assets (
+                    id SERIAL PRIMARY KEY,
+                    project_id INTEGER NOT NULL REFERENCES projects(id),
+                    name TEXT NOT NULL,
+                    asset_type TEXT NOT NULL,
+                    status TEXT DEFAULT 'waiting',
+                    description TEXT,
+                    thumbnail TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    metadata JSONB DEFAULT '{}',
+                    UNIQUE (project_id, name)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS shots (
+                    id SERIAL PRIMARY KEY,
+                    project_id INTEGER NOT NULL REFERENCES projects(id),
+                    sequence TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    frame_start INTEGER DEFAULT 1001,
+                    frame_end INTEGER DEFAULT 1100,
+                    status TEXT DEFAULT 'waiting',
+                    description TEXT,
+                    thumbnail TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    metadata JSONB DEFAULT '{}',
+                    UNIQUE (project_id, name)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id SERIAL PRIMARY KEY,
+                    entity_type TEXT NOT NULL,
+                    entity_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    status TEXT DEFAULT 'waiting',
+                    assignee TEXT,
+                    due_date TIMESTAMPTZ,
+                    priority INTEGER DEFAULT 50,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    metadata JSONB DEFAULT '{}',
+                    UNIQUE (entity_type, entity_id, name)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS versions (
+                    id SERIAL PRIMARY KEY,
+                    task_id INTEGER NOT NULL REFERENCES tasks(id),
+                    version_number INTEGER NOT NULL,
+                    status TEXT DEFAULT 'pending_review',
+                    path TEXT,
+                    thumbnail TEXT,
+                    notes TEXT,
+                    created_by TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    metadata JSONB DEFAULT '{}',
+                    UNIQUE (task_id, version_number)
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_project ON assets(project_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_shots_project ON shots(project_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_tasks_entity ON tasks(entity_type, entity_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_versions_task ON versions(task_id)")
         self._conn.commit()
     
     def close(self) -> None:
@@ -136,52 +134,46 @@ class Studio:
         metadata: Optional[dict] = None,
     ) -> Project:
         """Create a new project."""
-        now = datetime.now().isoformat()
-        metadata_json = json.dumps(metadata or {})
+        now = datetime.now()
+        meta = json.dumps(metadata or {})
         
-        cursor = self._conn.cursor()
-        cursor.execute(
-            """INSERT INTO projects (name, code, status, description, created_at, metadata)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (name, code, status, description, now, metadata_json),
-        )
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO projects (name, code, status, description, created_at, metadata)
+                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                (name, code, status, description, now, meta),
+            )
+            row_id = cur.fetchone()["id"]
         self._conn.commit()
         
         return Project(
-            id=cursor.lastrowid,
-            name=name,
-            code=code,
-            status=status,
-            description=description,
-            created_at=datetime.fromisoformat(now),
-            metadata=metadata or {},
+            id=row_id, name=name, code=code, status=status,
+            description=description, created_at=now, metadata=metadata or {},
         )
     
     def get_project(self, code: str) -> Optional[Project]:
         """Get a project by code."""
-        cursor = self._conn.cursor()
-        cursor.execute("SELECT * FROM projects WHERE code = ?", (code,))
-        row = cursor.fetchone()
+        with self._conn.cursor() as cur:
+            cur.execute("SELECT * FROM projects WHERE code = %s", (code,))
+            row = cur.fetchone()
         return self._row_to_project(row) if row else None
     
     def find_projects(self, status: Optional[str] = None) -> list[Project]:
         """Find projects, optionally filtered by status."""
-        cursor = self._conn.cursor()
-        if status:
-            cursor.execute("SELECT * FROM projects WHERE status = ?", (status,))
-        else:
-            cursor.execute("SELECT * FROM projects")
-        return [self._row_to_project(row) for row in cursor.fetchall()]
+        with self._conn.cursor() as cur:
+            if status:
+                cur.execute("SELECT * FROM projects WHERE status = %s", (status,))
+            else:
+                cur.execute("SELECT * FROM projects")
+            return [self._row_to_project(row) for row in cur.fetchall()]
     
-    def _row_to_project(self, row: sqlite3.Row) -> Project:
+    def _row_to_project(self, row: dict) -> Project:
+        meta = row["metadata"] if isinstance(row["metadata"], dict) else json.loads(row["metadata"] or "{}")
         return Project(
-            id=row["id"],
-            name=row["name"],
-            code=row["code"],
-            status=row["status"],
-            description=row["description"],
-            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
-            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            id=row["id"], name=row["name"], code=row["code"],
+            status=row["status"], description=row["description"],
+            created_at=row["created_at"] if isinstance(row["created_at"], datetime) else datetime.now(),
+            metadata=meta,
         )
     
     # =========================================================================
@@ -199,37 +191,33 @@ class Studio:
     ) -> Asset:
         """Create a new asset."""
         project_id = self._resolve_project_id(project)
-        now = datetime.now().isoformat()
-        metadata_json = json.dumps(metadata or {})
+        now = datetime.now()
+        meta = json.dumps(metadata or {})
         
-        cursor = self._conn.cursor()
-        cursor.execute(
-            """INSERT INTO assets (project_id, name, asset_type, status, description, created_at, metadata)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (project_id, name, asset_type, status, description, now, metadata_json),
-        )
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO assets (project_id, name, asset_type, status, description, created_at, metadata)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                (project_id, name, asset_type, status, description, now, meta),
+            )
+            row_id = cur.fetchone()["id"]
         self._conn.commit()
         
         return Asset(
-            id=cursor.lastrowid,
-            project_id=project_id,
-            name=name,
-            asset_type=asset_type,
-            status=status,
-            description=description,
-            created_at=datetime.fromisoformat(now),
-            metadata=metadata or {},
+            id=row_id, project_id=project_id, name=name,
+            asset_type=asset_type, status=status, description=description,
+            created_at=now, metadata=metadata or {},
         )
     
     def get_asset(self, project: Union[Project, int, str], name: str) -> Optional[Asset]:
         """Get an asset by project and name."""
         project_id = self._resolve_project_id(project)
-        cursor = self._conn.cursor()
-        cursor.execute(
-            "SELECT * FROM assets WHERE project_id = ? AND name = ?",
-            (project_id, name),
-        )
-        row = cursor.fetchone()
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM assets WHERE project_id = %s AND name = %s",
+                (project_id, name),
+            )
+            row = cur.fetchone()
         return self._row_to_asset(row) if row else None
     
     def find_assets(
@@ -240,33 +228,30 @@ class Studio:
     ) -> list[Asset]:
         """Find assets with optional filters."""
         query = "SELECT * FROM assets WHERE 1=1"
-        params = []
+        params: list[Any] = []
         
         if project:
-            query += " AND project_id = ?"
+            query += " AND project_id = %s"
             params.append(self._resolve_project_id(project))
         if asset_type:
-            query += " AND asset_type = ?"
+            query += " AND asset_type = %s"
             params.append(asset_type)
         if status:
-            query += " AND status = ?"
+            query += " AND status = %s"
             params.append(status)
         
-        cursor = self._conn.cursor()
-        cursor.execute(query, params)
-        return [self._row_to_asset(row) for row in cursor.fetchall()]
+        with self._conn.cursor() as cur:
+            cur.execute(query, params)
+            return [self._row_to_asset(row) for row in cur.fetchall()]
     
-    def _row_to_asset(self, row: sqlite3.Row) -> Asset:
+    def _row_to_asset(self, row: dict) -> Asset:
+        meta = row["metadata"] if isinstance(row["metadata"], dict) else json.loads(row["metadata"] or "{}")
         return Asset(
-            id=row["id"],
-            project_id=row["project_id"],
-            name=row["name"],
-            asset_type=row["asset_type"],
-            status=row["status"],
-            description=row["description"],
-            thumbnail=row["thumbnail"],
-            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
-            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            id=row["id"], project_id=row["project_id"], name=row["name"],
+            asset_type=row["asset_type"], status=row["status"],
+            description=row["description"], thumbnail=row.get("thumbnail"),
+            created_at=row["created_at"] if isinstance(row["created_at"], datetime) else datetime.now(),
+            metadata=meta,
         )
     
     # =========================================================================
@@ -286,39 +271,33 @@ class Studio:
     ) -> Shot:
         """Create a new shot."""
         project_id = self._resolve_project_id(project)
-        now = datetime.now().isoformat()
-        metadata_json = json.dumps(metadata or {})
+        now = datetime.now()
+        meta = json.dumps(metadata or {})
         
-        cursor = self._conn.cursor()
-        cursor.execute(
-            """INSERT INTO shots (project_id, sequence, name, frame_start, frame_end, status, description, created_at, metadata)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (project_id, sequence, name, frame_start, frame_end, status, description, now, metadata_json),
-        )
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO shots (project_id, sequence, name, frame_start, frame_end, status, description, created_at, metadata)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                (project_id, sequence, name, frame_start, frame_end, status, description, now, meta),
+            )
+            row_id = cur.fetchone()["id"]
         self._conn.commit()
         
         return Shot(
-            id=cursor.lastrowid,
-            project_id=project_id,
-            sequence=sequence,
-            name=name,
-            frame_start=frame_start,
-            frame_end=frame_end,
-            status=status,
-            description=description,
-            created_at=datetime.fromisoformat(now),
-            metadata=metadata or {},
+            id=row_id, project_id=project_id, sequence=sequence, name=name,
+            frame_start=frame_start, frame_end=frame_end, status=status,
+            description=description, created_at=now, metadata=metadata or {},
         )
     
     def get_shot(self, project: Union[Project, int, str], name: str) -> Optional[Shot]:
         """Get a shot by project and name."""
         project_id = self._resolve_project_id(project)
-        cursor = self._conn.cursor()
-        cursor.execute(
-            "SELECT * FROM shots WHERE project_id = ? AND name = ?",
-            (project_id, name),
-        )
-        row = cursor.fetchone()
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM shots WHERE project_id = %s AND name = %s",
+                (project_id, name),
+            )
+            row = cur.fetchone()
         return self._row_to_shot(row) if row else None
     
     def find_shots(
@@ -332,32 +311,29 @@ class Studio:
         params: list[Any] = []
         
         if project:
-            query += " AND project_id = ?"
+            query += " AND project_id = %s"
             params.append(self._resolve_project_id(project))
         if sequence:
-            query += " AND sequence = ?"
+            query += " AND sequence = %s"
             params.append(sequence)
         if status:
-            query += " AND status = ?"
+            query += " AND status = %s"
             params.append(status)
         
-        cursor = self._conn.cursor()
-        cursor.execute(query, params)
-        return [self._row_to_shot(row) for row in cursor.fetchall()]
+        with self._conn.cursor() as cur:
+            cur.execute(query, params)
+            return [self._row_to_shot(row) for row in cur.fetchall()]
     
-    def _row_to_shot(self, row: sqlite3.Row) -> Shot:
+    def _row_to_shot(self, row: dict) -> Shot:
+        meta = row["metadata"] if isinstance(row["metadata"], dict) else json.loads(row["metadata"] or "{}")
         return Shot(
-            id=row["id"],
-            project_id=row["project_id"],
-            sequence=row["sequence"],
-            name=row["name"],
-            frame_start=row["frame_start"],
-            frame_end=row["frame_end"],
-            status=row["status"],
-            description=row["description"],
-            thumbnail=row["thumbnail"],
-            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
-            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            id=row["id"], project_id=row["project_id"],
+            sequence=row["sequence"], name=row["name"],
+            frame_start=row["frame_start"], frame_end=row["frame_end"],
+            status=row["status"], description=row["description"],
+            thumbnail=row.get("thumbnail"),
+            created_at=row["created_at"] if isinstance(row["created_at"], datetime) else datetime.now(),
+            metadata=meta,
         )
     
     # =========================================================================
@@ -376,29 +352,23 @@ class Studio:
     ) -> Task:
         """Create a task on an asset or shot."""
         entity_type = "asset" if isinstance(entity, Asset) else "shot"
-        now = datetime.now().isoformat()
-        due_str = due_date.isoformat() if due_date else None
-        metadata_json = json.dumps(metadata or {})
+        now = datetime.now()
+        meta = json.dumps(metadata or {})
         
-        cursor = self._conn.cursor()
-        cursor.execute(
-            """INSERT INTO tasks (entity_type, entity_id, name, status, assignee, due_date, priority, created_at, metadata)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (entity_type, entity.id, name, status, assignee, due_str, priority, now, metadata_json),
-        )
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO tasks (entity_type, entity_id, name, status, assignee, due_date, priority, created_at, metadata)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                (entity_type, entity.id, name, status, assignee, due_date, priority, now, meta),
+            )
+            row_id = cur.fetchone()["id"]
         self._conn.commit()
         
         return Task(
-            id=cursor.lastrowid,
-            entity_type=entity_type,
-            entity_id=entity.id,
-            name=name,
-            status=status,
-            assignee=assignee,
-            due_date=due_date,
-            priority=priority,
-            created_at=datetime.fromisoformat(now),
-            metadata=metadata or {},
+            id=row_id, entity_type=entity_type, entity_id=entity.id,
+            name=name, status=status, assignee=assignee,
+            due_date=due_date, priority=priority,
+            created_at=now, metadata=metadata or {},
         )
     
     def update_task(
@@ -413,28 +383,28 @@ class Studio:
         task_id = task.id if isinstance(task, Task) else task
         
         updates = []
-        params = []
+        params: list[Any] = []
         
         if status is not None:
-            updates.append("status = ?")
+            updates.append("status = %s")
             params.append(status)
         if assignee is not None:
-            updates.append("assignee = ?")
+            updates.append("assignee = %s")
             params.append(assignee)
         if due_date is not None:
-            updates.append("due_date = ?")
-            params.append(due_date.isoformat())
+            updates.append("due_date = %s")
+            params.append(due_date)
         if priority is not None:
-            updates.append("priority = ?")
+            updates.append("priority = %s")
             params.append(priority)
         
         if updates:
             params.append(task_id)
-            cursor = self._conn.cursor()
-            cursor.execute(
-                f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?",
-                params,
-            )
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE tasks SET {', '.join(updates)} WHERE id = %s",
+                    params,
+                )
             self._conn.commit()
     
     def find_tasks(
@@ -445,35 +415,33 @@ class Studio:
     ) -> list[Task]:
         """Find tasks with optional filters."""
         query = "SELECT * FROM tasks WHERE 1=1"
-        params = []
+        params: list[Any] = []
         
         if entity:
             entity_type = "asset" if isinstance(entity, Asset) else "shot"
-            query += " AND entity_type = ? AND entity_id = ?"
+            query += " AND entity_type = %s AND entity_id = %s"
             params.extend([entity_type, entity.id])
         if status:
-            query += " AND status = ?"
+            query += " AND status = %s"
             params.append(status)
         if assignee:
-            query += " AND assignee = ?"
+            query += " AND assignee = %s"
             params.append(assignee)
         
-        cursor = self._conn.cursor()
-        cursor.execute(query, params)
-        return [self._row_to_task(row) for row in cursor.fetchall()]
+        with self._conn.cursor() as cur:
+            cur.execute(query, params)
+            return [self._row_to_task(row) for row in cur.fetchall()]
     
-    def _row_to_task(self, row: sqlite3.Row) -> Task:
+    def _row_to_task(self, row: dict) -> Task:
+        meta = row["metadata"] if isinstance(row["metadata"], dict) else json.loads(row["metadata"] or "{}")
         return Task(
-            id=row["id"],
-            entity_type=row["entity_type"],
-            entity_id=row["entity_id"],
-            name=row["name"],
-            status=row["status"],
-            assignee=row["assignee"],
-            due_date=datetime.fromisoformat(row["due_date"]) if row["due_date"] else None,
+            id=row["id"], entity_type=row["entity_type"],
+            entity_id=row["entity_id"], name=row["name"],
+            status=row["status"], assignee=row["assignee"],
+            due_date=row["due_date"] if isinstance(row.get("due_date"), datetime) else None,
             priority=row["priority"],
-            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
-            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            created_at=row["created_at"] if isinstance(row["created_at"], datetime) else datetime.now(),
+            metadata=meta,
         )
     
     # =========================================================================
@@ -490,35 +458,28 @@ class Studio:
     ) -> Version:
         """Create a new version for a task."""
         task_id = task.id if isinstance(task, Task) else task
+        now = datetime.now()
+        meta = json.dumps(metadata or {})
         
-        # Get next version number
-        cursor = self._conn.cursor()
-        cursor.execute(
-            "SELECT MAX(version_number) FROM versions WHERE task_id = ?",
-            (task_id,),
-        )
-        max_version = cursor.fetchone()[0]
-        version_number = (max_version or 0) + 1
-        
-        now = datetime.now().isoformat()
-        metadata_json = json.dumps(metadata or {})
-        
-        cursor.execute(
-            """INSERT INTO versions (task_id, version_number, path, notes, created_by, created_at, metadata)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (task_id, version_number, path, notes, created_by, now, metadata_json),
-        )
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT COALESCE(MAX(version_number), 0) AS max_v FROM versions WHERE task_id = %s",
+                (task_id,),
+            )
+            version_number = cur.fetchone()["max_v"] + 1
+            
+            cur.execute(
+                """INSERT INTO versions (task_id, version_number, path, notes, created_by, created_at, metadata)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                (task_id, version_number, path, notes, created_by, now, meta),
+            )
+            row_id = cur.fetchone()["id"]
         self._conn.commit()
         
         return Version(
-            id=cursor.lastrowid,
-            task_id=task_id,
-            version_number=version_number,
-            path=path,
-            notes=notes,
-            created_by=created_by,
-            created_at=datetime.fromisoformat(now),
-            metadata=metadata or {},
+            id=row_id, task_id=task_id, version_number=version_number,
+            path=path, notes=notes, created_by=created_by,
+            created_at=now, metadata=metadata or {},
         )
     
     def find_versions(
@@ -531,27 +492,24 @@ class Studio:
         
         if task is not None:
             task_id = task.id if isinstance(task, Task) else task
-            query += " AND task_id = ?"
+            query += " AND task_id = %s"
             params.append(task_id)
         
         query += " ORDER BY version_number ASC"
         
-        cursor = self._conn.cursor()
-        cursor.execute(query, params)
-        return [self._row_to_version(row) for row in cursor.fetchall()]
+        with self._conn.cursor() as cur:
+            cur.execute(query, params)
+            return [self._row_to_version(row) for row in cur.fetchall()]
     
-    def _row_to_version(self, row: sqlite3.Row) -> Version:
+    def _row_to_version(self, row: dict) -> Version:
+        meta = row["metadata"] if isinstance(row["metadata"], dict) else json.loads(row["metadata"] or "{}")
         return Version(
-            id=row["id"],
-            task_id=row["task_id"],
-            version_number=row["version_number"],
-            status=row["status"],
-            path=row["path"],
-            thumbnail=row["thumbnail"],
-            notes=row["notes"],
-            created_by=row["created_by"],
-            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
-            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            id=row["id"], task_id=row["task_id"],
+            version_number=row["version_number"], status=row["status"],
+            path=row["path"], thumbnail=row.get("thumbnail"),
+            notes=row["notes"], created_by=row["created_by"],
+            created_at=row["created_at"] if isinstance(row["created_at"], datetime) else datetime.now(),
+            metadata=meta,
         )
     
     # =========================================================================
@@ -564,7 +522,6 @@ class Studio:
             return project.id
         if isinstance(project, int):
             return project
-        # Assume it's a code
         proj = self.get_project(project)
         if not proj:
             raise ValueError(f"Project not found: {project}")
