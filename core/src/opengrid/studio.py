@@ -27,7 +27,7 @@ class Studio:
             db_path: Path to SQLite database, or ":memory:" for in-memory
         """
         self.db_path = Path(db_path) if db_path != ":memory:" else db_path
-        self._conn = sqlite3.connect(str(db_path))
+        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._init_schema()
     
