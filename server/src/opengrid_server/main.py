@@ -138,6 +138,28 @@ class TaskResponse(BaseModel):
         from_attributes = True
 
 
+class ShotCreate(BaseModel):
+    sequence: str
+    name: str
+    frame_start: int = 1001
+    frame_end: int = 1100
+    description: Optional[str] = None
+
+
+class ShotResponse(BaseModel):
+    id: int
+    project_id: int
+    sequence: str
+    name: str
+    frame_start: int
+    frame_end: int
+    status: str
+    description: Optional[str]
+    
+    class Config:
+        from_attributes = True
+
+
 class VersionCreate(BaseModel):
     path: Optional[str] = None
     notes: Optional[str] = None
@@ -249,6 +271,93 @@ def get_asset(code: str, name: str):
 
 
 # =============================================================================
+# Routes — Shots
+# =============================================================================
+
+@app.get("/api/projects/{code}/shots", response_model=list[ShotResponse])
+def list_shots(
+    code: str,
+    sequence: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """List shots in a project."""
+    studio = get_studio()
+    project = studio.get_project(code)
+    if not project:
+        raise HTTPException(404, f"Project not found: {code}")
+    
+    shots = studio.find_shots(project=project, sequence=sequence, status=status)
+    return [ShotResponse.model_validate(s) for s in shots]
+
+
+@app.post("/api/projects/{code}/shots", response_model=ShotResponse, status_code=201)
+def create_shot(code: str, data: ShotCreate):
+    """Create a shot in a project."""
+    studio = get_studio()
+    project = studio.get_project(code)
+    if not project:
+        raise HTTPException(404, f"Project not found: {code}")
+    
+    try:
+        shot = studio.create_shot(
+            project=project,
+            sequence=data.sequence,
+            name=data.name,
+            frame_start=data.frame_start,
+            frame_end=data.frame_end,
+            description=data.description,
+        )
+        return ShotResponse.model_validate(shot)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/projects/{code}/shots/{name}", response_model=ShotResponse)
+def get_shot(code: str, name: str):
+    """Get a shot by name."""
+    studio = get_studio()
+    project = studio.get_project(code)
+    if not project:
+        raise HTTPException(404, f"Project not found: {code}")
+    
+    shot = studio.get_shot(project, name)
+    if not shot:
+        raise HTTPException(404, f"Shot not found: {name}")
+    return ShotResponse.model_validate(shot)
+
+
+# =============================================================================
+# Routes — Shot Tasks
+# =============================================================================
+
+@app.get("/api/shots/{shot_id}/tasks", response_model=list[TaskResponse])
+def list_shot_tasks(shot_id: int):
+    """List tasks on a shot."""
+    studio = get_studio()
+    shot = Shot(id=shot_id, project_id=0, sequence="", name="")
+    tasks = studio.find_tasks(entity=shot)
+    return [TaskResponse.model_validate(t) for t in tasks]
+
+
+@app.post("/api/shots/{shot_id}/tasks", response_model=TaskResponse, status_code=201)
+def create_shot_task(shot_id: int, data: TaskCreate):
+    """Create a task on a shot."""
+    studio = get_studio()
+    shot = Shot(id=shot_id, project_id=0, sequence="", name="")
+    
+    try:
+        task = studio.create_task(
+            entity=shot,
+            name=data.name,
+            assignee=data.assignee,
+            priority=data.priority,
+        )
+        return TaskResponse.model_validate(task)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+# =============================================================================
 # Routes — Tasks
 # =============================================================================
 
@@ -305,6 +414,14 @@ def update_task(task_id: int, data: TaskUpdate):
 # Routes — Versions
 # =============================================================================
 
+@app.get("/api/tasks/{task_id}/versions", response_model=list[VersionResponse])
+def list_versions(task_id: int):
+    """List versions for a task."""
+    studio = get_studio()
+    versions = studio.find_versions(task=task_id)
+    return [VersionResponse.model_validate(v) for v in versions]
+
+
 @app.post("/api/tasks/{task_id}/versions", response_model=VersionResponse, status_code=201)
 def create_version(task_id: int, data: VersionCreate):
     """Create a new version."""
@@ -339,6 +456,7 @@ def stats():
     return {
         "projects": len(studio.find_projects()),
         "assets": len(studio.find_assets()),
+        "shots": len(studio.find_shots()),
         "tasks": len(studio.find_tasks()),
     }
 

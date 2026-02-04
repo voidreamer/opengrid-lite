@@ -270,6 +270,97 @@ class Studio:
         )
     
     # =========================================================================
+    # Shots
+    # =========================================================================
+    
+    def create_shot(
+        self,
+        project: Union[Project, int, str],
+        sequence: str,
+        name: str,
+        frame_start: int = 1001,
+        frame_end: int = 1100,
+        status: str = "waiting",
+        description: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> Shot:
+        """Create a new shot."""
+        project_id = self._resolve_project_id(project)
+        now = datetime.now().isoformat()
+        metadata_json = json.dumps(metadata or {})
+        
+        cursor = self._conn.cursor()
+        cursor.execute(
+            """INSERT INTO shots (project_id, sequence, name, frame_start, frame_end, status, description, created_at, metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (project_id, sequence, name, frame_start, frame_end, status, description, now, metadata_json),
+        )
+        self._conn.commit()
+        
+        return Shot(
+            id=cursor.lastrowid,
+            project_id=project_id,
+            sequence=sequence,
+            name=name,
+            frame_start=frame_start,
+            frame_end=frame_end,
+            status=status,
+            description=description,
+            created_at=datetime.fromisoformat(now),
+            metadata=metadata or {},
+        )
+    
+    def get_shot(self, project: Union[Project, int, str], name: str) -> Optional[Shot]:
+        """Get a shot by project and name."""
+        project_id = self._resolve_project_id(project)
+        cursor = self._conn.cursor()
+        cursor.execute(
+            "SELECT * FROM shots WHERE project_id = ? AND name = ?",
+            (project_id, name),
+        )
+        row = cursor.fetchone()
+        return self._row_to_shot(row) if row else None
+    
+    def find_shots(
+        self,
+        project: Optional[Union[Project, int, str]] = None,
+        sequence: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> list[Shot]:
+        """Find shots with optional filters."""
+        query = "SELECT * FROM shots WHERE 1=1"
+        params: list[Any] = []
+        
+        if project:
+            query += " AND project_id = ?"
+            params.append(self._resolve_project_id(project))
+        if sequence:
+            query += " AND sequence = ?"
+            params.append(sequence)
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        
+        cursor = self._conn.cursor()
+        cursor.execute(query, params)
+        return [self._row_to_shot(row) for row in cursor.fetchall()]
+    
+    def _row_to_shot(self, row: sqlite3.Row) -> Shot:
+        return Shot(
+            id=row["id"],
+            project_id=row["project_id"],
+            sequence=row["sequence"],
+            name=row["name"],
+            frame_start=row["frame_start"],
+            frame_end=row["frame_end"],
+            status=row["status"],
+            description=row["description"],
+            thumbnail=row["thumbnail"],
+            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+        )
+    
+    # =========================================================================
     # Tasks
     # =========================================================================
     
@@ -428,6 +519,39 @@ class Studio:
             created_by=created_by,
             created_at=datetime.fromisoformat(now),
             metadata=metadata or {},
+        )
+    
+    def find_versions(
+        self,
+        task: Optional[Union[Task, int]] = None,
+    ) -> list[Version]:
+        """Find versions, optionally filtered by task."""
+        query = "SELECT * FROM versions WHERE 1=1"
+        params: list[Any] = []
+        
+        if task is not None:
+            task_id = task.id if isinstance(task, Task) else task
+            query += " AND task_id = ?"
+            params.append(task_id)
+        
+        query += " ORDER BY version_number ASC"
+        
+        cursor = self._conn.cursor()
+        cursor.execute(query, params)
+        return [self._row_to_version(row) for row in cursor.fetchall()]
+    
+    def _row_to_version(self, row: sqlite3.Row) -> Version:
+        return Version(
+            id=row["id"],
+            task_id=row["task_id"],
+            version_number=row["version_number"],
+            status=row["status"],
+            path=row["path"],
+            thumbnail=row["thumbnail"],
+            notes=row["notes"],
+            created_by=row["created_by"],
+            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(),
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
         )
     
     # =========================================================================
